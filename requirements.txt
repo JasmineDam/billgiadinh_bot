@@ -1,3 +1,6 @@
 python-telegram-bot==21.6
 google-genai
+google-auth
+gspread
+httpx
 Pillow

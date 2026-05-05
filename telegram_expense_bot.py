@@ -1,30 +1,29 @@
 """
-🤖 Telegram Bot Theo Dõi Chi Tiêu - Lưu vào Google Sheets
+🤖 Telegram Bot Theo Dõi Chi Tiêu - Claude AI + Google Sheets
 """
 
 import os
 import json
 import logging
 import httpx
+import base64
 from datetime import datetime
-from google import genai
-from google.genai import types
 from google.oauth2.service_account import Credentials
 import gspread
+import anthropic
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 SHEET_ID = os.environ["SHEET_ID"]
 GOOGLE_CREDS = json.loads(os.environ["GOOGLE_CREDS"])
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-# Google Sheets setup
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(GOOGLE_CREDS, scopes=SCOPES)
 gc = gspread.authorize(creds)
@@ -32,7 +31,6 @@ sh = gc.open_by_key(SHEET_ID)
 
 
 def get_or_create_sheet(month_label: str):
-    """Lấy hoặc tạo sheet theo tháng, vd: '05-2026'"""
     try:
         ws = sh.worksheet(month_label)
     except gspread.exceptions.WorksheetNotFound:
@@ -45,25 +43,21 @@ def get_month_label() -> str:
     return datetime.now().strftime("%m-%Y")
 
 
-def add_expense(chat_id: str, amount: int, description: str, user_name: str) -> dict:
+def add_expense(amount: int, description: str, user_name: str) -> dict:
     month_label = get_month_label()
     ws = get_or_create_sheet(month_label)
-
-    # Lấy tất cả dữ liệu để tính tổng
     records = ws.get_all_values()
     total = 0
-    for row in records[1:]:  # Bỏ header
+    for row in records[1:]:
         if row and row[1]:
             try:
                 total += int(row[1])
             except:
                 pass
     total += amount
-
     time_str = datetime.now().strftime("%H:%M %d/%m/%Y")
     ws.append_row([time_str, amount, description, user_name, total])
-
-    count = len(records)  # Số dòng kể cả header
+    count = len(records)
     return {"total": total, "count": count}
 
 
@@ -86,19 +80,33 @@ def get_month_total(month_label: str) -> dict:
 
 
 def extract_expense_from_image(image_bytes: bytes) -> dict:
-    prompt = (
-        "Đây là ảnh thông báo giao dịch ngân hàng. "
-        "Trả về JSON: {\"amount\": <số tiền dương>, \"description\": \"<nơi thanh toán ngắn gọn>\"}\n"
-        "Chỉ trả về JSON thuần, không markdown, không giải thích."
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    response = claude.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=200,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": image_b64,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        "Đây là ảnh thông báo giao dịch ngân hàng. "
+                        "Trả về JSON: {\"amount\": <số tiền dương>, \"description\": \"<nơi thanh toán ngắn gọn>\"}\n"
+                        "Chỉ trả về JSON thuần, không markdown, không giải thích."
+                    )
+                }
+            ],
+        }]
     )
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-lite",
-        contents=[
-            types.Part.from_text(text=prompt),
-            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-        ]
-    )
-    text = response.text.strip().replace("```json", "").replace("```", "").strip()
+    text = response.content[0].text.strip().replace("```json", "").replace("```", "").strip()
     return json.loads(text)
 
 
@@ -111,14 +119,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/total – Tổng chi tiêu tháng này\n"
         "/history – Lịch sử giao dịch tháng này\n"
         "/history\\_month 04 – Lịch sử tháng cụ thể\n"
-        "/compare – So sánh các tháng\n",
+        "/compare – So sánh các tháng",
         parse_mode="Markdown",
     )
 
 
 async def cmd_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    month_label = get_month_label()
-    data = get_month_total(month_label)
+    data = get_month_total(get_month_label())
     if data["count"] == 0:
         await update.message.reply_text("📭 Chưa có giao dịch nào tháng này.")
         return
@@ -131,8 +138,7 @@ async def cmd_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    month_label = get_month_label()
-    data = get_month_total(month_label)
+    data = get_month_total(get_month_label())
     if data["count"] == 0:
         await update.message.reply_text("📭 Chưa có giao dịch nào tháng này.")
         return
@@ -146,7 +152,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_history_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("⚠️ Dùng: `/history_month 04` để xem tháng 4", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Dùng: `/history_month 04`", parse_mode="Markdown")
         return
     month_input = context.args[0].zfill(2)
     year = datetime.now().strftime("%Y")
@@ -173,7 +179,6 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data["count"] > 0:
             totals.append((m, data["total"], data["count"]))
             lines.append(f"📅 *Tháng {m}/{year}*: `{data['total']:,.0f} VND` ({data['count']} giao dịch)")
-
     if len(totals) >= 2:
         diff = totals[-1][1] - totals[-2][1]
         if diff > 0:
@@ -182,7 +187,6 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"\n📉 Tháng này giảm `{abs(diff):,.0f} VND` so với tháng trước")
         else:
             lines.append(f"\n➡️ Tháng này bằng tháng trước")
-
     if not totals:
         await update.message.reply_text("📭 Chưa có dữ liệu nào.")
         return
@@ -197,12 +201,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with httpx.AsyncClient() as http:
             resp = await http.get(tg_file.file_path)
             image_bytes = resp.content
-
         result = extract_expense_from_image(image_bytes)
         amount = int(result["amount"])
         description = result.get("description", "Không rõ")
         user_name = update.effective_user.first_name or "Unknown"
-        data = add_expense(str(update.effective_chat.id), amount, description, user_name)
+        data = add_expense(amount, description, user_name)
         await msg.edit_text(
             f"✅ *Đã ghi nhận!*\n"
             f"💸 `{amount:,.0f} VND` – {description}\n\n"
@@ -221,7 +224,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = int(parts[0].replace(",", "").replace(".", "").replace("-", ""))
         description = parts[1] if len(parts) > 1 else "Không rõ"
         user_name = update.effective_user.first_name or "Unknown"
-        data = add_expense(str(update.effective_chat.id), amount, description, user_name)
+        data = add_expense(amount, description, user_name)
         await update.message.reply_text(
             f"✅ *Đã ghi nhận!*\n"
             f"💸 `{amount:,.0f} VND` – {description}\n\n"
@@ -241,7 +244,7 @@ def main():
     app.add_handler(CommandHandler("compare", cmd_compare))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    print("🤖 Bot đang chạy với Google Sheets!")
+    print("🤖 Bot đang chạy với Claude AI + Google Sheets!")
     app.run_polling()
 
 

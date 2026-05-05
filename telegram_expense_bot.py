@@ -102,7 +102,8 @@ def extract_expense_from_image(image_bytes: bytes) -> dict:
                         "Tìm TỔNG SỐ TIỀN THANH TOÁN của toàn bộ đơn hàng (không phải giá từng sản phẩm riêng lẻ). "
                         "Nếu là ảnh ngân hàng, lấy số tiền giao dịch chính. "
                         "Nếu là ảnh đơn hàng Shopee/Lazada/Tiki, lấy tổng tiền thanh toán cuối cùng của toàn đơn. "
-                        'Trả về JSON: {"amount": <tổng tiền>, "description": "<tên shop hoặc nơi thanh toán>"}\n'
+                        "Nếu tiền là USD, quy đổi sang VND (1 USD = 26000 VND). "
+                        'Trả về JSON: {"amount": <tổng tiền VND, chỉ số nguyên>, "description": "<tên shop hoặc nơi thanh toán>"}\n'
                         "Chỉ trả về JSON thuần, không markdown, không giải thích."
                     )
                 }
@@ -122,7 +123,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/total – Tổng chi tiêu tháng này\n"
         "/history – Lịch sử giao dịch tháng này\n"
         "/history\\_month 04 – Lịch sử tháng cụ thể\n"
-        "/compare – So sánh các tháng",
+        "/compare – So sánh các tháng\n"
+        "/delete 4 – Xóa giao dịch thứ 4",
         parse_mode="Markdown",
     )
 
@@ -238,6 +240,42 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Không hiểu. Thử gửi ảnh hoặc gõ: `84000 cafe highlands`")
 
 
+
+async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("⚠️ Dùng: `/delete 4` để xóa giao dịch thứ 4", parse_mode="Markdown")
+        return
+    try:
+        idx = int(context.args[0])
+        month_label = get_month_label()
+        ws = get_or_create_sheet(month_label)
+        records = ws.get_all_values()
+        data_rows = records[1:]  # Bỏ header
+
+        if idx < 1 or idx > len(data_rows):
+            await update.message.reply_text(f"⚠️ Không có giao dịch thứ {idx}. Hiện có {len(data_rows)} giao dịch.")
+            return
+
+        row = data_rows[idx - 1]
+        amount = int(row[1]) if row[1] else 0
+        description = row[2] if len(row) > 2 else "?"
+
+        # Xóa dòng (row index trong sheet = idx + 1 vì có header)
+        ws.delete_rows(idx + 1)
+
+        # Tính lại tổng sau khi xóa
+        remaining = ws.get_all_values()[1:]
+        total = sum(int(r[1]) for r in remaining if r and r[1] and r[1].isdigit())
+
+        await update.message.reply_text(
+            f"🗑 *Đã xóa giao dịch {idx}*\n"
+            f"💸 `{amount:,.0f} VND` – {description}\n\n"
+            f"📊 *Tổng còn lại:* `{total:,.0f} VND` ({len(remaining)} giao dịch)",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi: {e}")
+
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
@@ -245,6 +283,7 @@ def main():
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("history_month", cmd_history_month))
     app.add_handler(CommandHandler("compare", cmd_compare))
+    app.add_handler(CommandHandler("delete", cmd_delete))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     print("🤖 Bot đang chạy với Claude AI + Google Sheets!")

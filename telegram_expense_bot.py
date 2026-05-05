@@ -61,7 +61,7 @@ def extract_expense_from_image(image_bytes: bytes) -> dict:
         "Chỉ trả về JSON thuần, không markdown, không giải thích."
     )
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash-8b",
         contents=[
             types.Part.from_text(text=prompt),
             types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),

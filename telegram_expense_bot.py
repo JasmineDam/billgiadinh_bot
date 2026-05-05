@@ -255,6 +255,51 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+
+MONTHLY_BUDGET = 40_000_000  # 40 triệu VND
+
+async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = get_month_total(get_month_label())
+    spent = data["total"]
+    remaining = MONTHLY_BUDGET - spent
+
+    now = datetime.now()
+    days_in_month = 30
+    day_of_month = now.day
+    days_left = days_in_month - day_of_month
+
+    # Dự báo chi tiêu cuối tháng
+    if day_of_month > 0 and spent > 0:
+        daily_avg = spent / day_of_month
+        forecast = daily_avg * days_in_month
+        forecast_diff = MONTHLY_BUDGET - forecast
+    else:
+        forecast = 0
+        forecast_diff = MONTHLY_BUDGET
+
+    # Bar progress
+    pct = min(spent / MONTHLY_BUDGET, 1.0)
+    filled = int(pct * 10)
+    bar = "🟥" * filled + "⬜" * (10 - filled)
+
+    status = "✅ Đang ổn" if remaining >= 0 else "⚠️ Đã vượt ngân sách!"
+    forecast_status = "📉 Dự báo HỤT" if forecast_diff < 0 else "📈 Dự báo DƯ"
+
+    lines = [
+        f"💰 *Ngân sách tháng {now.strftime('%m/%Y')}*\n",
+        f"{bar} `{pct*100:.0f}%`",
+        f"",
+        f"🏦 Ngân sách: `{MONTHLY_BUDGET:,.0f} VND`",
+        f"💸 Đã chi: `{spent:,.0f} VND`",
+        f"",
+        f"{status}",
+        f"{'💚 Còn lại' if remaining >= 0 else '🔴 Vượt'}: `{abs(remaining):,.0f} VND`",
+        f"",
+        f"{forecast_status} `{abs(forecast_diff):,.0f} VND`",
+        f"📆 Còn {days_left} ngày | TB {daily_avg:,.0f} VND/ngày" if spent > 0 else "",
+    ]
+    await update.message.reply_text("\n".join(l for l in lines if l is not None), parse_mode="Markdown")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -307,6 +352,7 @@ def main():
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("history_month", cmd_history_month))
     app.add_handler(CommandHandler("compare", cmd_compare))
+    app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("delete", cmd_delete))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

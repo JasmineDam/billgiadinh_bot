@@ -6,7 +6,8 @@ import os
 import json
 import logging
 from datetime import datetime
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import PIL.Image
 import io
 from telegram import Update
@@ -18,8 +19,7 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 DATA_FILE = "expenses.json"
 
@@ -61,7 +61,10 @@ def extract_expense_from_image(image_bytes: bytes) -> dict:
         "Trả về JSON: {\"amount\": <số tiền dương>, \"description\": \"<nơi thanh toán ngắn gọn>\"}\n"
         "Chỉ trả về JSON thuần, không markdown, không giải thích."
     )
-    response = model.generate_content([prompt, image])
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[prompt, image]
+    )
     text = response.text.strip().replace("```json", "").replace("```", "").strip()
     return json.loads(text)
 

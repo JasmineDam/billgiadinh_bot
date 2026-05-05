@@ -56,8 +56,8 @@ def add_expense(amount: int, description: str, user_name: str) -> dict:
                 pass
     total += amount
     time_str = datetime.now().strftime("%H:%M %d/%m/%Y")
-    count = len(records)  # Số dòng hiện tại kể cả header
     ws.append_row([time_str, amount, description, user_name, total])
+    count = len(records)  # Số giao dịch (không kể header)
     return {"total": total, "count": count}
 
 
@@ -241,6 +241,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+
+async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    month_label = get_month_label()
+    try:
+        ws = sh.worksheet(month_label)
+        ws.clear()
+        ws.append_row(["Thời gian", "Số tiền", "Mô tả", "Người ghi", "Tổng cộng"])
+        await update.message.reply_text("🗑 Đã xóa toàn bộ dữ liệu tháng này.")
+    except:
+        await update.message.reply_text("📭 Không có dữ liệu tháng này để xóa.")
+
 async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("⚠️ Dùng: `/delete 4` để xóa giao dịch thứ 4", parse_mode="Markdown")
@@ -283,6 +294,7 @@ def main():
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("history_month", cmd_history_month))
     app.add_handler(CommandHandler("compare", cmd_compare))
+    app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("delete", cmd_delete))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

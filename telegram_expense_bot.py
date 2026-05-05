@@ -51,7 +51,9 @@ def add_expense(amount: int, description: str, user_name: str) -> dict:
     for row in records[1:]:
         if row and len(row) > 1 and row[1]:
             try:
-                total += int(str(row[1]).replace(',', '').replace('.', '').strip())
+                val = str(row[1]).replace(',', '').replace('.', '').replace('đ', '').replace('d', '').strip()
+                if val.lstrip('-').isdigit():
+                    total += int(val)
             except:
                 pass
     total += amount
@@ -70,8 +72,10 @@ def get_month_total(month_label: str) -> dict:
         for row in records[1:]:
             if row and row[1]:
                 try:
-                    total += int(row[1])
-                    count += 1
+                    val = str(row[1]).replace(',', '').replace('.', '').replace('đ', '').replace('d', '').strip()
+                    if val.lstrip('-').isdigit():
+                        total += int(val)
+                        count += 1
                 except:
                     pass
         return {"total": total, "count": count, "rows": records[1:]}
@@ -206,9 +210,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with httpx.AsyncClient() as http:
             resp = await http.get(tg_file.file_path)
             image_bytes = resp.content
+
+        # Đọc số tiền từ ảnh
         result = extract_expense_from_image(image_bytes)
         amount = int(result["amount"])
-        description = result.get("description", "Không rõ")
+
+        # Nếu có caption thì dùng caption làm mô tả, không thì dùng AI đọc
+        caption = update.message.caption
+        if caption and caption.strip():
+            description = caption.strip()
+        else:
+            description = result.get("description", "Không rõ")
+
         user_name = update.effective_user.first_name or "Unknown"
         data = add_expense(amount, description, user_name)
         await msg.edit_text(

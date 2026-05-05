@@ -49,15 +49,15 @@ def add_expense(amount: int, description: str, user_name: str) -> dict:
     records = ws.get_all_values()
     total = 0
     for row in records[1:]:
-        if row and row[1]:
+        if row and len(row) > 1 and row[1]:
             try:
-                total += int(row[1])
+                total += int(str(row[1]).replace(',', '').replace('.', '').strip())
             except:
                 pass
     total += amount
     time_str = datetime.now().strftime("%H:%M %d/%m/%Y")
+    count = len(records)  # Số dòng hiện tại kể cả header
     ws.append_row([time_str, amount, description, user_name, total])
-    count = len(records)
     return {"total": total, "count": count}
 
 

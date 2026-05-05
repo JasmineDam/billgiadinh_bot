@@ -5,11 +5,11 @@
 import os
 import json
 import logging
+import httpx
+import base64
 from datetime import datetime
 from google import genai
 from google.genai import types
-import PIL.Image
-import io
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -55,7 +55,7 @@ def add_expense(chat_id: str, amount: int, description: str) -> dict:
 
 
 def extract_expense_from_image(image_bytes: bytes) -> dict:
-    image = PIL.Image.open(io.BytesIO(image_bytes))
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     prompt = (
         "Đây là ảnh thông báo giao dịch ngân hàng. "
         "Trả về JSON: {\"amount\": <số tiền dương>, \"description\": \"<nơi thanh toán ngắn gọn>\"}\n"
@@ -63,7 +63,10 @@ def extract_expense_from_image(image_bytes: bytes) -> dict:
     )
     response = client.models.generate_content(
         model="gemini-2.0-flash",
-        contents=[prompt, image]
+        contents=[
+            types.Part.from_text(text=prompt),
+            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+        ]
     )
     text = response.text.strip().replace("```json", "").replace("```", "").strip()
     return json.loads(text)
@@ -125,9 +128,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("⏳ Đang đọc ảnh giao dịch...")
     try:
         photo = update.message.photo[-1]
-        file = await context.bot.get_file(photo.file_id)
-        image_bytes = await file.download_as_bytearray()
-        result = extract_expense_from_image(bytes(image_bytes))
+        tg_file = await context.bot.get_file(photo.file_id)
+        # Tải ảnh về dạng bytes qua URL
+        async with httpx.AsyncClient() as http:
+            resp = await http.get(tg_file.file_path)
+            image_bytes = resp.content
+
+        result = extract_expense_from_image(image_bytes)
         amount = int(result["amount"])
         description = result.get("description", "Không rõ")
         month_data = add_expense(str(update.effective_chat.id), amount, description)

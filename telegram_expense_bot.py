@@ -55,7 +55,6 @@ def add_expense(chat_id: str, amount: int, description: str) -> dict:
 
 
 def extract_expense_from_image(image_bytes: bytes) -> dict:
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     prompt = (
         "Đây là ảnh thông báo giao dịch ngân hàng. "
         "Trả về JSON: {\"amount\": <số tiền dương>, \"description\": \"<nơi thanh toán ngắn gọn>\"}\n"
@@ -79,7 +78,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💬 Hoặc gõ: `84000 cafe highlands`\n\n"
         "📊 Lệnh:\n"
         "/total – Tổng chi tiêu tháng này\n"
-        "/history – Lịch sử giao dịch\n"
+        "/history – Lịch sử giao dịch tháng này\n"
+        "/history\\_month 04 – Lịch sử tháng cụ thể\n"
+        "/compare – So sánh các tháng\n"
         "/reset – Xóa dữ liệu tháng này",
         parse_mode="Markdown",
     )
@@ -114,6 +115,71 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+async def cmd_history_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    data = load_data()
+
+    # Lấy tháng từ argument, vd: /history_month 04
+    if not context.args:
+        await update.message.reply_text("⚠️ Dùng: `/history_month 04` để xem tháng 4", parse_mode="Markdown")
+        return
+
+    month_input = context.args[0].zfill(2)  # "4" → "04"
+    year = datetime.now().strftime("%Y")
+    month_key = f"{year}-{month_input}"
+    month_label = f"{month_input}/{year}"
+
+    month_data = data.get(chat_id, {}).get(month_key)
+    if not month_data or not month_data["transactions"]:
+        await update.message.reply_text(f"📭 Không có dữ liệu tháng {month_label}.")
+        return
+
+    lines = [f"🗂 *Lịch sử tháng {month_label}*\n"]
+    for i, tx in enumerate(month_data["transactions"], 1):
+        lines.append(f"{i}. `{tx['amount']:,.0f}` – {tx['description']} _{tx['time']}_")
+    lines.append(f"\n💰 *Tổng: {month_data['total']:,.0f} VND*")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    data = load_data()
+    user_data = data.get(chat_id, {})
+
+    if not user_data:
+        await update.message.reply_text("📭 Chưa có dữ liệu nào.")
+        return
+
+    # Sắp xếp các tháng theo thứ tự
+    sorted_months = sorted(user_data.keys())
+    if not sorted_months:
+        await update.message.reply_text("📭 Chưa có dữ liệu nào.")
+        return
+
+    lines = ["📊 *So sánh chi tiêu các tháng*\n"]
+
+    totals = []
+    for month_key in sorted_months:
+        month_data = user_data[month_key]
+        total = month_data.get("total", 0)
+        count = len(month_data.get("transactions", []))
+        totals.append(total)
+        year, month = month_key.split("-")
+        lines.append(f"📅 *Tháng {month}/{year}*: `{total:,.0f} VND` ({count} giao dịch)")
+
+    # So sánh tháng này vs tháng trước
+    if len(totals) >= 2:
+        diff = totals[-1] - totals[-2]
+        if diff > 0:
+            lines.append(f"\n📈 Tháng này tăng `{diff:,.0f} VND` so với tháng trước")
+        elif diff < 0:
+            lines.append(f"\n📉 Tháng này giảm `{abs(diff):,.0f} VND` so với tháng trước")
+        else:
+            lines.append(f"\n➡️ Tháng này bằng tháng trước")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     data = load_data()
@@ -129,7 +195,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         photo = update.message.photo[-1]
         tg_file = await context.bot.get_file(photo.file_id)
-        # Tải ảnh về dạng bytes qua URL
         async with httpx.AsyncClient() as http:
             resp = await http.get(tg_file.file_path)
             image_bytes = resp.content
@@ -171,6 +236,8 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("total", cmd_total))
     app.add_handler(CommandHandler("history", cmd_history))
+    app.add_handler(CommandHandler("history_month", cmd_history_month))
+    app.add_handler(CommandHandler("compare", cmd_compare))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

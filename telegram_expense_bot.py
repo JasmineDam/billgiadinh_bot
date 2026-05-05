@@ -98,8 +98,11 @@ def extract_expense_from_image(image_bytes: bytes) -> dict:
                 {
                     "type": "text",
                     "text": (
-                        "Đây là ảnh thông báo giao dịch ngân hàng. "
-                        "Trả về JSON: {\"amount\": <số tiền dương>, \"description\": \"<nơi thanh toán ngắn gọn>\"}\n"
+                        "Đây là ảnh giao dịch hoặc đơn hàng. "
+                        "Tìm TỔNG SỐ TIỀN THANH TOÁN của toàn bộ đơn hàng (không phải giá từng sản phẩm riêng lẻ). "
+                        "Nếu là ảnh ngân hàng, lấy số tiền giao dịch chính. "
+                        "Nếu là ảnh đơn hàng Shopee/Lazada/Tiki, lấy tổng tiền thanh toán cuối cùng của toàn đơn. "
+                        'Trả về JSON: {"amount": <tổng tiền>, "description": "<tên shop hoặc nơi thanh toán>"}\n'
                         "Chỉ trả về JSON thuần, không markdown, không giải thích."
                     )
                 }

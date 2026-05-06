@@ -259,21 +259,36 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MONTHLY_BUDGET = 40_000_000  # 40 triệu VND
 
 async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = get_month_total(get_month_label())
+    now = datetime.now()
+    month_label = get_month_label()
+    data = get_month_total(month_label)
     spent = data["total"]
     remaining = MONTHLY_BUDGET - spent
 
-    now = datetime.now()
-    days_in_month = 30
-    day_of_month = now.day
-    days_left = days_in_month - day_of_month
+    # Tính ngày thực tế đã chi dựa trên giao dịch đầu tiên trong sheet
+    days_elapsed = now.day  # mặc định
+    try:
+        ws = sh.worksheet(month_label)
+        records = ws.get_all_values()
+        if len(records) > 1 and records[1][0]:
+            # Đọc ngày giao dịch đầu tiên, format "HH:MM DD/MM/YYYY"
+            first_date_str = records[1][0].split(" ")[-1]  # lấy DD/MM/YYYY
+            first_day = int(first_date_str.split("/")[0])
+            days_elapsed = max(now.day - first_day + 1, 1)
+    except:
+        pass
 
-    # Dự báo chi tiêu cuối tháng
-    if day_of_month > 0 and spent > 0:
-        daily_avg = spent / day_of_month
+    import calendar
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    days_left = days_in_month - now.day
+
+    # Dự báo dựa trên số ngày thực tế đã chi
+    if days_elapsed > 0 and spent > 0:
+        daily_avg = spent / days_elapsed
         forecast = daily_avg * days_in_month
         forecast_diff = MONTHLY_BUDGET - forecast
     else:
+        daily_avg = 0
         forecast = 0
         forecast_diff = MONTHLY_BUDGET
 
@@ -283,7 +298,7 @@ async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bar = "🟥" * filled + "⬜" * (10 - filled)
 
     status = "✅ Đang ổn" if remaining >= 0 else "⚠️ Đã vượt ngân sách!"
-    forecast_status = "📉 Dự báo HỤT" if forecast_diff < 0 else "📈 Dự báo DƯ"
+    daily_remaining = remaining / days_left if days_left > 0 and remaining > 0 else 0
 
     lines = [
         f"💰 *Ngân sách tháng {now.strftime('%m/%Y')}*\n",
@@ -295,8 +310,7 @@ async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{status}",
         f"{'💚 Còn lại' if remaining >= 0 else '🔴 Vượt'}: `{abs(remaining):,.0f} VND`",
         f"",
-        f"{forecast_status} `{abs(forecast_diff):,.0f} VND`",
-        f"📆 Còn {days_left} ngày | TB {daily_avg:,.0f} VND/ngày" if spent > 0 else "",
+        f"📆 Còn {days_left} ngày → có thể chi `{daily_remaining:,.0f} VND/ngày`" if remaining > 0 else f"🔴 Đã vượt ngân sách `{abs(remaining):,.0f} VND`",
     ]
     await update.message.reply_text("\n".join(l for l in lines if l is not None), parse_mode="Markdown")
 

@@ -449,8 +449,9 @@ async def cmd_taisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 diff_text = f"\n➡️ Không đổi so với tháng trước"
 
         lines = [f"🏦 *Tài sản tháng {now.strftime('%m/%Y')}*\n"]
-        for name, amount in sorted(data["assets"].items()):
-            lines.append(f"• {name}: `{amount:,.0f} VND`")
+        for name, amount in sorted(data["assets"].items(), key=lambda x: -x[1]):
+            pct = amount / data["total"] * 100 if data["total"] > 0 else 0
+            lines.append(f"• {name}: `{amount:,.0f} VND` ({pct:.0f}%)")
         lines.append(f"\n💰 *Tổng: {data['total']:,.0f} VND*{diff_text}")
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
         return
@@ -577,8 +578,9 @@ async def cmd_taisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 diff_text = f"\n➡️ Không đổi so với tháng trước"
 
         lines = [f"🏦 *Tài sản tháng {now.strftime('%m/%Y')}*\n"]
-        for name, amount in sorted(data["assets"].items()):
-            lines.append(f"• {name}: `{amount:,.0f} VND`")
+        for name, amount in sorted(data["assets"].items(), key=lambda x: -x[1]):
+            pct = amount / data["total"] * 100 if data["total"] > 0 else 0
+            lines.append(f"• {name}: `{amount:,.0f} VND` ({pct:.0f}%)")
         lines.append(f"\n💰 *Tổng: {data['total']:,.0f} VND*{diff_text}")
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
         return

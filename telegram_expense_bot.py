@@ -314,6 +314,50 @@ async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("\n".join(l for l in lines if l is not None), parse_mode="Markdown")
 
+
+async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+    month_label = get_month_label()
+    try:
+        ws = sh.worksheet(month_label)
+        records = ws.get_all_values()[1:]  # Bỏ header
+    except:
+        await update.message.reply_text("📭 Chưa có dữ liệu tháng này.")
+        return
+
+    # Tính chi tiêu theo từng người
+    person_totals = {}
+    total = 0
+    for row in records:
+        if not row or len(row) < 4:
+            continue
+        try:
+            amount = int(str(row[1]).replace(',', '').replace('.', '').replace('đ', '').strip())
+            person = row[3].strip() if row[3] else "Khác"
+            person_totals[person] = person_totals.get(person, 0) + amount
+            total += amount
+        except:
+            pass
+
+    savings = MONTHLY_BUDGET - total
+    lines = [f"📊 *Tổng kết tháng {now.strftime('%m/%Y')}*\n"]
+
+    # Chi tiêu từng người
+    for person, amount in sorted(person_totals.items()):
+        pct = amount / total * 100 if total > 0 else 0
+        lines.append(f"👤 *{person}*: `{amount:,.0f} VND` ({pct:.0f}%)")
+
+    lines.append("")
+    lines.append(f"💸 Tổng chi: `{total:,.0f} VND`")
+    lines.append(f"🏦 Ngân sách: `{MONTHLY_BUDGET:,.0f} VND`")
+
+    if savings >= 0:
+        lines.append(f"💚 Tiết kiệm: `{savings:,.0f} VND`")
+    else:
+        lines.append(f"🔴 Vượt chi: `{abs(savings):,.0f} VND`")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -367,6 +411,7 @@ def main():
     app.add_handler(CommandHandler("history_month", cmd_history_month))
     app.add_handler(CommandHandler("compare", cmd_compare))
     app.add_handler(CommandHandler("budget", cmd_budget))
+    app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("delete", cmd_delete))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

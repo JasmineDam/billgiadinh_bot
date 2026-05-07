@@ -128,7 +128,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/history – Lịch sử giao dịch tháng này\n"
         "/history\\_month 04 – Lịch sử tháng cụ thể\n"
         "/compare – So sánh các tháng\n"
-        "/delete 4 – Xóa giao dịch thứ 4",
         parse_mode="Markdown",
     )
 
@@ -358,6 +357,124 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
+
+# ── Tài sản ─────────────────────────────────────────
+
+def get_asset_sheet():
+    try:
+        ws = sh.worksheet("Tai San")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title="Tai San", rows=200, cols=5)
+        ws.append_row(["Tài sản", "Số tiền", "Cập nhật lúc", "Tháng"])
+    return ws
+
+def update_asset(name: str, amount: int) -> dict:
+    ws = get_asset_sheet()
+    records = ws.get_all_values()
+    month_label = get_month_label()
+    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
+
+    # Tìm dòng tài sản này trong tháng hiện tại
+    for i, row in enumerate(records[1:], 2):
+        if row and row[0].lower() == name.lower() and len(row) > 3 and row[3] == month_label:
+            ws.update(f"B{i}", [[amount]])
+            ws.update(f"C{i}", [[now_str]])
+            break
+    else:
+        ws.append_row([name, amount, now_str, month_label])
+
+    # Tính tổng tài sản tháng này
+    records = ws.get_all_values()
+    total = 0
+    assets = {}
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == month_label:
+            try:
+                val = int(str(row[1]).replace(',', '').strip())
+                assets[row[0]] = val
+                total += val
+            except:
+                pass
+    return {"total": total, "assets": assets}
+
+
+def get_assets_by_month(month_label: str) -> dict:
+    ws = get_asset_sheet()
+    records = ws.get_all_values()
+    total = 0
+    assets = {}
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == month_label:
+            try:
+                val = int(str(row[1]).replace(',', '').strip())
+                assets[row[0]] = val
+                total += val
+            except:
+                pass
+    return {"total": total, "assets": assets}
+
+
+async def cmd_taisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+
+    # Nếu không có args → xem danh sách tài sản
+    if not context.args:
+        data = get_assets_by_month(get_month_label())
+        if not data["assets"]:
+            await update.message.reply_text(
+                "📭 Chưa có tài sản nào.\n\n"
+                "Dùng: `/taisan Fmarket 400000` để thêm",
+                parse_mode="Markdown"
+            )
+            return
+
+        # Tính tăng/giảm so với tháng trước
+        prev_month = now.month - 1
+        prev_year = now.year
+        if prev_month == 0:
+            prev_month = 12
+            prev_year -= 1
+        prev_label = f"{str(prev_month).zfill(2)}-{prev_year}"
+        prev_data = get_assets_by_month(prev_label)
+
+        diff = data["total"] - prev_data["total"]
+        diff_text = ""
+        if prev_data["total"] > 0:
+            if diff > 0:
+                diff_text = f"\n📈 Tăng `{diff:,.0f} VND` so với tháng trước"
+            elif diff < 0:
+                diff_text = f"\n📉 Giảm `{abs(diff):,.0f} VND` so với tháng trước"
+            else:
+                diff_text = f"\n➡️ Không đổi so với tháng trước"
+
+        lines = [f"🏦 *Tài sản tháng {now.strftime('%m/%Y')}*\n"]
+        for name, amount in sorted(data["assets"].items()):
+            lines.append(f"• {name}: `{amount:,.0f} VND`")
+        lines.append(f"\n💰 *Tổng: {data['total']:,.0f} VND*{diff_text}")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        return
+
+    # Có args → cập nhật tài sản
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "⚠️ Dùng: `/taisan Fmarket 400000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        name = context.args[0]
+        amount = int(context.args[-1].replace(',', '').replace('.', ''))
+        data = update_asset(name, amount)
+        await update.message.reply_text(
+            f"✅ *Đã cập nhật tài sản!*\n"
+            f"🏦 {name}: `{amount:,.0f} VND`\n\n"
+            f"💰 *Tổng tài sản tháng này:* `{data['total']:,.0f} VND`",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi: {e}")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -368,40 +485,134 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("📭 Không có dữ liệu tháng này để xóa.")
 
-async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("⚠️ Dùng: `/delete 4` để xóa giao dịch thứ 4", parse_mode="Markdown")
-        return
-    try:
-        idx = int(context.args[0])
-        month_label = get_month_label()
-        ws = get_or_create_sheet(month_label)
-        records = ws.get_all_values()
-        data_rows = records[1:]  # Bỏ header
 
-        if idx < 1 or idx > len(data_rows):
-            await update.message.reply_text(f"⚠️ Không có giao dịch thứ {idx}. Hiện có {len(data_rows)} giao dịch.")
+# ── Tài sản ─────────────────────────────────────────
+
+def get_asset_sheet():
+    try:
+        ws = sh.worksheet("Tai San")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title="Tai San", rows=200, cols=5)
+        ws.append_row(["Tài sản", "Số tiền", "Cập nhật lúc", "Tháng"])
+    return ws
+
+def update_asset(name: str, amount: int) -> dict:
+    ws = get_asset_sheet()
+    records = ws.get_all_values()
+    month_label = get_month_label()
+    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
+
+    # Tìm dòng tài sản này trong tháng hiện tại
+    for i, row in enumerate(records[1:], 2):
+        if row and row[0].lower() == name.lower() and len(row) > 3 and row[3] == month_label:
+            ws.update(f"B{i}", [[amount]])
+            ws.update(f"C{i}", [[now_str]])
+            break
+    else:
+        ws.append_row([name, amount, now_str, month_label])
+
+    # Tính tổng tài sản tháng này
+    records = ws.get_all_values()
+    total = 0
+    assets = {}
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == month_label:
+            try:
+                val = int(str(row[1]).replace(',', '').strip())
+                assets[row[0]] = val
+                total += val
+            except:
+                pass
+    return {"total": total, "assets": assets}
+
+
+def get_assets_by_month(month_label: str) -> dict:
+    ws = get_asset_sheet()
+    records = ws.get_all_values()
+    total = 0
+    assets = {}
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == month_label:
+            try:
+                val = int(str(row[1]).replace(',', '').strip())
+                assets[row[0]] = val
+                total += val
+            except:
+                pass
+    return {"total": total, "assets": assets}
+
+
+async def cmd_taisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+
+    # Nếu không có args → xem danh sách tài sản
+    if not context.args:
+        data = get_assets_by_month(get_month_label())
+        if not data["assets"]:
+            await update.message.reply_text(
+                "📭 Chưa có tài sản nào.\n\n"
+                "Dùng: `/taisan Fmarket 400000` để thêm",
+                parse_mode="Markdown"
+            )
             return
 
-        row = data_rows[idx - 1]
-        amount = int(row[1]) if row[1] else 0
-        description = row[2] if len(row) > 2 else "?"
+        # Tính tăng/giảm so với tháng trước
+        prev_month = now.month - 1
+        prev_year = now.year
+        if prev_month == 0:
+            prev_month = 12
+            prev_year -= 1
+        prev_label = f"{str(prev_month).zfill(2)}-{prev_year}"
+        prev_data = get_assets_by_month(prev_label)
 
-        # Xóa dòng (row index trong sheet = idx + 1 vì có header)
-        ws.delete_rows(idx + 1)
+        diff = data["total"] - prev_data["total"]
+        diff_text = ""
+        if prev_data["total"] > 0:
+            if diff > 0:
+                diff_text = f"\n📈 Tăng `{diff:,.0f} VND` so với tháng trước"
+            elif diff < 0:
+                diff_text = f"\n📉 Giảm `{abs(diff):,.0f} VND` so với tháng trước"
+            else:
+                diff_text = f"\n➡️ Không đổi so với tháng trước"
 
-        # Tính lại tổng sau khi xóa
-        remaining = ws.get_all_values()[1:]
-        total = sum(int(r[1]) for r in remaining if r and r[1] and r[1].isdigit())
+        lines = [f"🏦 *Tài sản tháng {now.strftime('%m/%Y')}*\n"]
+        for name, amount in sorted(data["assets"].items()):
+            lines.append(f"• {name}: `{amount:,.0f} VND`")
+        lines.append(f"\n💰 *Tổng: {data['total']:,.0f} VND*{diff_text}")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        return
 
+    # Có args → cập nhật tài sản
+    if len(context.args) < 2:
         await update.message.reply_text(
-            f"🗑 *Đã xóa giao dịch {idx}*\n"
-            f"💸 `{amount:,.0f} VND` – {description}\n\n"
-            f"📊 *Tổng còn lại:* `{total:,.0f} VND` ({len(remaining)} giao dịch)",
+            "⚠️ Dùng: `/taisan Fmarket 400000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        name = context.args[0]
+        amount = int(context.args[-1].replace(',', '').replace('.', ''))
+        data = update_asset(name, amount)
+        await update.message.reply_text(
+            f"✅ *Đã cập nhật tài sản!*\n"
+            f"🏦 {name}: `{amount:,.0f} VND`\n\n"
+            f"💰 *Tổng tài sản tháng này:* `{data['total']:,.0f} VND`",
             parse_mode="Markdown",
         )
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi: {e}")
+
+async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    month_label = get_month_label()
+    try:
+        ws = sh.worksheet(month_label)
+        ws.clear()
+        ws.append_row(["Thời gian", "Số tiền", "Mô tả", "Người ghi", "Tổng cộng"])
+        await update.message.reply_text("🗑 Đã xóa toàn bộ dữ liệu tháng này.")
+    except:
+        await update.message.reply_text("📭 Không có dữ liệu tháng này để xóa.")
+
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -412,8 +623,8 @@ def main():
     app.add_handler(CommandHandler("compare", cmd_compare))
     app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("summary", cmd_summary))
+    app.add_handler(CommandHandler("taisan", cmd_taisan))
     app.add_handler(CommandHandler("reset", cmd_reset))
-    app.add_handler(CommandHandler("delete", cmd_delete))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     print("🤖 Bot đang chạy với Claude AI + Google Sheets!")

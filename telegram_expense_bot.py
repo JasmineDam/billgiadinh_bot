@@ -128,6 +128,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/history – Lịch sử giao dịch tháng này\n"
         "/history\\_month 04 – Lịch sử tháng cụ thể\n"
         "/compare – So sánh các tháng\n"
+        "/taisan – Xem/cập nhật tài sản gia đình",
         parse_mode="Markdown",
     )
 

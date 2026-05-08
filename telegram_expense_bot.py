@@ -128,7 +128,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/history – Lịch sử giao dịch tháng này\n"
         "/history\\_month 04 – Lịch sử tháng cụ thể\n"
         "/compare – So sánh các tháng\n"
-        "/taisan – Xem/cập nhật tài sản gia đình",
+        "/taisan – Xem/cập nhật tài sản gia đình\n"
+        "/naptaisan iPower 3700000 – Cộng thêm tiền vào tài sản",
         parse_mode="Markdown",
     )
 
@@ -477,6 +478,45 @@ async def cmd_taisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi: {e}")
 
+
+async def cmd_naptaisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "⚠️ Dùng: `/naptaisan iPower 3700000`",
+            parse_mode="Markdown"
+        )
+        return
+    try:
+        name = context.args[0]
+        amount = int(context.args[-1].replace(',', '').replace('.', ''))
+        month_label = get_month_label()
+
+        # Lấy số dư hiện tại
+        ws = get_asset_sheet()
+        records = ws.get_all_values()
+        current = 0
+        for row in records[1:]:
+            if row and len(row) >= 4 and row[0].lower() == name.lower() and row[3] == month_label:
+                try:
+                    current = int(str(row[1]).replace(',', '').strip())
+                except:
+                    pass
+                break
+
+        new_amount = current + amount
+        data = update_asset(name, new_amount)
+
+        await update.message.reply_text(
+            f"✅ *Đã nạp thêm vào {name}!*\n"
+            f"💰 Trước: `{current:,.0f} VND`\n"
+            f"➕ Nạp: `{amount:,.0f} VND`\n"
+            f"💎 Sau: `{new_amount:,.0f} VND`\n\n"
+            f"🏦 *Tổng tài sản:* `{data['total']:,.0f} VND`",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi: {e}")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -606,6 +646,45 @@ async def cmd_taisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi: {e}")
 
+
+async def cmd_naptaisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "⚠️ Dùng: `/naptaisan iPower 3700000`",
+            parse_mode="Markdown"
+        )
+        return
+    try:
+        name = context.args[0]
+        amount = int(context.args[-1].replace(',', '').replace('.', ''))
+        month_label = get_month_label()
+
+        # Lấy số dư hiện tại
+        ws = get_asset_sheet()
+        records = ws.get_all_values()
+        current = 0
+        for row in records[1:]:
+            if row and len(row) >= 4 and row[0].lower() == name.lower() and row[3] == month_label:
+                try:
+                    current = int(str(row[1]).replace(',', '').strip())
+                except:
+                    pass
+                break
+
+        new_amount = current + amount
+        data = update_asset(name, new_amount)
+
+        await update.message.reply_text(
+            f"✅ *Đã nạp thêm vào {name}!*\n"
+            f"💰 Trước: `{current:,.0f} VND`\n"
+            f"➕ Nạp: `{amount:,.0f} VND`\n"
+            f"💎 Sau: `{new_amount:,.0f} VND`\n\n"
+            f"🏦 *Tổng tài sản:* `{data['total']:,.0f} VND`",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi: {e}")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -627,6 +706,7 @@ def main():
     app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("taisan", cmd_taisan))
+    app.add_handler(CommandHandler("naptaisan", cmd_naptaisan))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

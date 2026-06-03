@@ -341,7 +341,7 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     savings = MONTHLY_BUDGET - total
-    lines = [f"📊 *Tổng kết tháng {now.strftime('%m/%Y')}*\n"]
+    lines = [f"📊 *Tổng kết tháng {now_label}*\n"]
 
     # Chi tiêu từng người
     for person, amount in sorted(person_totals.items()):

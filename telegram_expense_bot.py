@@ -318,7 +318,16 @@ async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
-    month_label = get_month_label()
+
+    if context.args:
+        month_input = context.args[0].zfill(2)
+        year = now.strftime("%Y")
+        month_label = f"{month_input}-{year}"
+        now_label = f"{month_input}/{year}"
+    else:
+        month_label = get_month_label()
+        now_label = now.strftime("%m/%Y")
+
     try:
         ws = sh.worksheet(month_label)
         records = ws.get_all_values()[1:]  # Bỏ header
@@ -370,7 +379,44 @@ def get_asset_sheet():
         ws.append_row(["Tài sản", "Số tiền", "Cập nhật lúc", "Tháng"])
     return ws
 
+
+def auto_carry_over_assets(month_label: str):
+    """Tự động copy tài sản từ tháng trước nếu tháng này chưa có dữ liệu."""
+    ws = get_asset_sheet()
+    records = ws.get_all_values()
+
+    # Kiểm tra xem tháng này đã có dữ liệu chưa
+    has_current = any(row for row in records[1:] if len(row) >= 4 and row[3] == month_label)
+    if has_current:
+        return  # Đã có rồi, không cần copy
+
+    # Tìm tháng trước
+    from datetime import datetime
+    year, month = month_label.split("-")
+    m = int(month)
+    y = int(year)
+    if m == 1:
+        prev_label = f"12-{y-1}"
+    else:
+        prev_label = f"{str(m-1).zfill(2)}-{y}"
+
+    # Lấy tài sản tháng trước
+    prev_assets = {}
+    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == prev_label:
+            try:
+                val = int(str(row[1]).replace(',', '').strip())
+                prev_assets[row[0]] = val
+            except:
+                pass
+
+    # Copy sang tháng này
+    for name, amount in prev_assets.items():
+        ws.append_row([name, amount, f"(copy từ {prev_label}) {now_str}", month_label])
+
 def update_asset(name: str, amount: int) -> dict:
+    auto_carry_over_assets(get_month_label())
     ws = get_asset_sheet()
     records = ws.get_all_values()
     month_label = get_month_label()
@@ -401,6 +447,7 @@ def update_asset(name: str, amount: int) -> dict:
 
 
 def get_assets_by_month(month_label: str) -> dict:
+    auto_carry_over_assets(month_label)
     ws = get_asset_sheet()
     records = ws.get_all_values()
     total = 0
@@ -538,7 +585,44 @@ def get_asset_sheet():
         ws.append_row(["Tài sản", "Số tiền", "Cập nhật lúc", "Tháng"])
     return ws
 
+
+def auto_carry_over_assets(month_label: str):
+    """Tự động copy tài sản từ tháng trước nếu tháng này chưa có dữ liệu."""
+    ws = get_asset_sheet()
+    records = ws.get_all_values()
+
+    # Kiểm tra xem tháng này đã có dữ liệu chưa
+    has_current = any(row for row in records[1:] if len(row) >= 4 and row[3] == month_label)
+    if has_current:
+        return  # Đã có rồi, không cần copy
+
+    # Tìm tháng trước
+    from datetime import datetime
+    year, month = month_label.split("-")
+    m = int(month)
+    y = int(year)
+    if m == 1:
+        prev_label = f"12-{y-1}"
+    else:
+        prev_label = f"{str(m-1).zfill(2)}-{y}"
+
+    # Lấy tài sản tháng trước
+    prev_assets = {}
+    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == prev_label:
+            try:
+                val = int(str(row[1]).replace(',', '').strip())
+                prev_assets[row[0]] = val
+            except:
+                pass
+
+    # Copy sang tháng này
+    for name, amount in prev_assets.items():
+        ws.append_row([name, amount, f"(copy từ {prev_label}) {now_str}", month_label])
+
 def update_asset(name: str, amount: int) -> dict:
+    auto_carry_over_assets(get_month_label())
     ws = get_asset_sheet()
     records = ws.get_all_values()
     month_label = get_month_label()
@@ -569,6 +653,7 @@ def update_asset(name: str, amount: int) -> dict:
 
 
 def get_assets_by_month(month_label: str) -> dict:
+    auto_carry_over_assets(month_label)
     ws = get_asset_sheet()
     records = ws.get_all_values()
     total = 0

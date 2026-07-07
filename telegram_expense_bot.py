@@ -257,7 +257,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-MONTHLY_BUDGET = 40_000_000  # 40 triệu VND
+MONTHLY_BUDGET = 21_000_000  # 21 triệu sinh hoạt (không gồm tiền nhà)
+HOUSE_FUND = 19_000_000  # Quỹ tiền nhà mỗi tháng
 
 async def cmd_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
@@ -349,22 +350,48 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    savings = MONTHLY_BUDGET - total
+    # Tách tiền nhà ra khỏi tổng chi sinh hoạt
+    house_expense = person_totals.pop("tiền nhà", 0)
+    # Tìm giao dịch tiền nhà trong records
+    house_expense = 0
+    sinh_hoat_totals = {}
+    for row in records:
+        if not row or len(row) < 4:
+            continue
+        try:
+            amount = int(str(row[1]).replace(',', '').replace('.', '').replace('đ', '').strip())
+            desc = str(row[2]).lower().strip() if len(row) > 2 else ""
+            person = row[3].strip() if row[3] else "Khác"
+            if "tiền nhà" in desc or "tien nha" in desc:
+                house_expense += amount
+            else:
+                sinh_hoat_totals[person] = sinh_hoat_totals.get(person, 0) + amount
+        except:
+            pass
+
+    sinh_hoat_total = sum(sinh_hoat_totals.values())
+    savings = MONTHLY_BUDGET - sinh_hoat_total
     lines = [f"📊 *Tổng kết tháng {now_label}*\n"]
 
-    # Chi tiêu từng người
-    for person, amount in sorted(person_totals.items()):
-        pct = amount / total * 100 if total > 0 else 0
+    # Chi tiêu sinh hoạt từng người
+    for person, amount in sorted(sinh_hoat_totals.items()):
+        pct = amount / sinh_hoat_total * 100 if sinh_hoat_total > 0 else 0
         lines.append(f"👤 *{person}*: `{amount:,.0f} VND` ({pct:.0f}%)")
 
     lines.append("")
-    lines.append(f"💸 Tổng chi: `{total:,.0f} VND`")
-    lines.append(f"🏦 Ngân sách: `{MONTHLY_BUDGET:,.0f} VND`")
+    lines.append(f"💸 Chi sinh hoạt: `{sinh_hoat_total:,.0f} VND`")
+    lines.append(f"🏦 Ngân sách SH: `{MONTHLY_BUDGET:,.0f} VND`")
 
     if savings >= 0:
         lines.append(f"💚 Tiết kiệm: `{savings:,.0f} VND`")
     else:
         lines.append(f"🔴 Vượt chi: `{abs(savings):,.0f} VND`")
+
+    lines.append("")
+    lines.append(f"🏠 Quỹ tiền nhà: `{HOUSE_FUND:,.0f} VND`")
+    if house_expense > 0:
+        lines.append(f"   └ Đã ghi nhận: `{house_expense:,.0f} VND`")
+    lines.append(f"💰 Tổng thực chi: `{sinh_hoat_total + house_expense:,.0f} VND`")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -381,17 +408,17 @@ def get_asset_sheet():
 
 
 def auto_carry_over_assets(month_label: str):
-    """Tự động copy tài sản từ tháng trước nếu tháng này chưa có dữ liệu."""
+    """Tự động copy tài sản từ tháng trước, bỏ qua những tài sản đã có tháng này."""
     ws = get_asset_sheet()
     records = ws.get_all_values()
 
-    # Kiểm tra xem tháng này đã có dữ liệu chưa
-    has_current = any(row for row in records[1:] if len(row) >= 4 and row[3] == month_label)
-    if has_current:
-        return  # Đã có rồi, không cần copy
+    # Lấy danh sách tài sản đã có tháng này
+    current_assets = set()
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == month_label:
+            current_assets.add(row[0].lower().strip())
 
     # Tìm tháng trước
-    from datetime import datetime
     year, month = month_label.split("-")
     m = int(month)
     y = int(year)
@@ -400,20 +427,21 @@ def auto_carry_over_assets(month_label: str):
     else:
         prev_label = f"{str(m-1).zfill(2)}-{y}"
 
-    # Lấy tài sản tháng trước
+    # Lấy tài sản tháng trước (lấy giá trị mới nhất của mỗi tài sản)
     prev_assets = {}
-    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
     for row in records[1:]:
         if row and len(row) >= 4 and row[3] == prev_label:
             try:
                 val = int(str(row[1]).replace(',', '').strip())
-                prev_assets[row[0]] = val
+                prev_assets[row[0]] = val  # Ghi đè để lấy giá trị cuối cùng
             except:
                 pass
 
-    # Copy sang tháng này
+    # Copy những tài sản chưa có tháng này
+    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
     for name, amount in prev_assets.items():
-        ws.append_row([name, amount, f"(copy từ {prev_label}) {now_str}", month_label])
+        if name.lower().strip() not in current_assets:
+            ws.append_row([name, amount, f"(copy từ {prev_label}) {now_str}", month_label])
 
 def update_asset(name: str, amount: int) -> dict:
     auto_carry_over_assets(get_month_label())
@@ -587,17 +615,17 @@ def get_asset_sheet():
 
 
 def auto_carry_over_assets(month_label: str):
-    """Tự động copy tài sản từ tháng trước nếu tháng này chưa có dữ liệu."""
+    """Tự động copy tài sản từ tháng trước, bỏ qua những tài sản đã có tháng này."""
     ws = get_asset_sheet()
     records = ws.get_all_values()
 
-    # Kiểm tra xem tháng này đã có dữ liệu chưa
-    has_current = any(row for row in records[1:] if len(row) >= 4 and row[3] == month_label)
-    if has_current:
-        return  # Đã có rồi, không cần copy
+    # Lấy danh sách tài sản đã có tháng này
+    current_assets = set()
+    for row in records[1:]:
+        if row and len(row) >= 4 and row[3] == month_label:
+            current_assets.add(row[0].lower().strip())
 
     # Tìm tháng trước
-    from datetime import datetime
     year, month = month_label.split("-")
     m = int(month)
     y = int(year)
@@ -606,20 +634,21 @@ def auto_carry_over_assets(month_label: str):
     else:
         prev_label = f"{str(m-1).zfill(2)}-{y}"
 
-    # Lấy tài sản tháng trước
+    # Lấy tài sản tháng trước (lấy giá trị mới nhất của mỗi tài sản)
     prev_assets = {}
-    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
     for row in records[1:]:
         if row and len(row) >= 4 and row[3] == prev_label:
             try:
                 val = int(str(row[1]).replace(',', '').strip())
-                prev_assets[row[0]] = val
+                prev_assets[row[0]] = val  # Ghi đè để lấy giá trị cuối cùng
             except:
                 pass
 
-    # Copy sang tháng này
+    # Copy những tài sản chưa có tháng này
+    now_str = datetime.now().strftime("%H:%M %d/%m/%Y")
     for name, amount in prev_assets.items():
-        ws.append_row([name, amount, f"(copy từ {prev_label}) {now_str}", month_label])
+        if name.lower().strip() not in current_assets:
+            ws.append_row([name, amount, f"(copy từ {prev_label}) {now_str}", month_label])
 
 def update_asset(name: str, amount: int) -> dict:
     auto_carry_over_assets(get_month_label())

@@ -11,8 +11,8 @@ from datetime import datetime
 from google.oauth2.service_account import Credentials
 import gspread
 import anthropic
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
@@ -157,7 +157,23 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if row and len(row) >= 3:
             lines.append(f"{i}. `{int(row[1]):,.0f}` – {row[2]} _{row[0]}_")
     lines.append(f"\n💰 *Tổng: {data['total']:,.0f} VND*")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    # Tính số tiền nạp iPower
+    ipower_amount = HOUSE_FUND
+    for person, spent in person_totals.items():
+        remaining = CONTRIBUTION_PER_PERSON - spent
+        if remaining < 0:
+            ipower_amount -= abs(remaining)
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(f"✅ Nạp {ipower_amount:,.0f} vào iPower", callback_data=f"nap_ipower:{ipower_amount}"),
+        InlineKeyboardButton("❌ Bỏ qua", callback_data="skip_ipower")
+    ]])
+
+    await update.message.reply_text(
+        "\n".join(lines),
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
 
 
 async def cmd_history_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -667,6 +683,37 @@ async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
+
+async def callback_nap_ipower(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("nap_ipower:"):
+        amount = int(query.data.split(":")[1])
+        data = update_asset("iPower", 0)  # Get current
+        ws = get_asset_sheet()
+        records = ws.get_all_values()
+        month_label = get_month_label()
+        current = 0
+        for row in records[1:]:
+            if row and len(row) >= 4 and row[0].lower() == "ipower" and row[3] == month_label:
+                try:
+                    current = int(str(row[1]).replace(',', '').strip())
+                except:
+                    pass
+        new_amount = current + amount
+        data = update_asset("iPower", new_amount)
+        await query.edit_message_text(
+            f"✅ *Đã nạp vào iPower!*\n"
+            f"💰 Trước: `{current:,.0f} VND`\n"
+            f"➕ Nạp: `{amount:,.0f} VND`\n"
+            f"💎 Sau: `{new_amount:,.0f} VND`\n\n"
+            f"🏦 *Tổng tài sản:* `{data['total']:,.0f} VND`",
+            parse_mode="Markdown",
+        )
+    elif query.data == "skip_ipower":
+        await query.edit_message_text("❌ Bỏ qua nạp iPower.")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -949,6 +996,37 @@ async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
+
+async def callback_nap_ipower(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith("nap_ipower:"):
+        amount = int(query.data.split(":")[1])
+        data = update_asset("iPower", 0)  # Get current
+        ws = get_asset_sheet()
+        records = ws.get_all_values()
+        month_label = get_month_label()
+        current = 0
+        for row in records[1:]:
+            if row and len(row) >= 4 and row[0].lower() == "ipower" and row[3] == month_label:
+                try:
+                    current = int(str(row[1]).replace(',', '').strip())
+                except:
+                    pass
+        new_amount = current + amount
+        data = update_asset("iPower", new_amount)
+        await query.edit_message_text(
+            f"✅ *Đã nạp vào iPower!*\n"
+            f"💰 Trước: `{current:,.0f} VND`\n"
+            f"➕ Nạp: `{amount:,.0f} VND`\n"
+            f"💎 Sau: `{new_amount:,.0f} VND`\n\n"
+            f"🏦 *Tổng tài sản:* `{data['total']:,.0f} VND`",
+            parse_mode="Markdown",
+        )
+    elif query.data == "skip_ipower":
+        await query.edit_message_text("❌ Bỏ qua nạp iPower.")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -970,6 +1048,7 @@ def main():
     app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("quyettoan", cmd_quyettoan))
+    app.add_handler(CallbackQueryHandler(callback_nap_ipower))
     app.add_handler(CommandHandler("taisan", cmd_taisan))
     app.add_handler(CommandHandler("naptaisan", cmd_naptaisan))
     app.add_handler(CommandHandler("reset", cmd_reset))

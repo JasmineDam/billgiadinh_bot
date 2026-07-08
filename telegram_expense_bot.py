@@ -592,6 +592,81 @@ async def cmd_naptaisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi: {e}")
 
+
+CONTRIBUTION_PER_PERSON = 20_000_000  # Mỗi người đóng 20tr/tháng
+
+async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+
+    if context.args:
+        month_input = context.args[0].zfill(2)
+        year = now.strftime("%Y")
+        month_label = f"{month_input}-{year}"
+        now_label = f"{month_input}/{year}"
+    else:
+        month_label = get_month_label()
+        now_label = now.strftime("%m/%Y")
+
+    try:
+        ws = sh.worksheet(month_label)
+        records = ws.get_all_values()[1:]
+    except:
+        await update.message.reply_text("📭 Chưa có dữ liệu tháng này.")
+        return
+
+    # Tính chi tiêu từng người (không gồm tiền nhà)
+    person_totals = {}
+    house_total = 0
+    for row in records:
+        if not row or len(row) < 4:
+            continue
+        try:
+            amount = int(str(row[1]).replace(',', '').replace('.', '').replace('đ', '').strip())
+            desc = str(row[2]).lower().strip() if len(row) > 2 else ""
+            person = row[3].strip() if row[3] else "Khác"
+            if "tiền nhà" in desc or "tien nha" in desc:
+                house_total += amount
+            else:
+                person_totals[person] = person_totals.get(person, 0) + amount
+        except:
+            pass
+
+    lines = [f"💰 *Quyết toán tháng {now_label}*\n"]
+
+    transfer_to = None
+    transfer_amount = 0
+    ipower_notes = []
+
+    for person, spent in sorted(person_totals.items()):
+        remaining = CONTRIBUTION_PER_PERSON - spent
+        if remaining >= 0:
+            lines.append(f"👤 *{person}* chi `{spent:,.0f}` → còn `{remaining:,.0f} VND`")
+            if transfer_to is None:
+                transfer_to = person
+                transfer_amount = remaining
+        else:
+            overdue = abs(remaining)
+            ipower_this = HOUSE_FUND - overdue
+            lines.append(f"👤 *{person}* chi `{spent:,.0f}` → vượt `{overdue:,.0f} VND`")
+            ipower_notes.append(f"  └ iPower của {person}: `{HOUSE_FUND:,.0f} - {overdue:,.0f}` = `{ipower_this:,.0f} VND`")
+
+    lines.append("")
+
+    # Ai cần chuyển tiền cho ai
+    if transfer_to and transfer_amount > 0:
+        other = [p for p in person_totals if p != transfer_to]
+        if other:
+            lines.append(f"➡️ *{other[0]} chuyển cho {transfer_to}: `{transfer_amount:,.0f} VND`*")
+
+    lines.append("")
+    lines.append(f"🏠 *Nạp vào iPower: `{HOUSE_FUND:,.0f} VND`*")
+    for note in ipower_notes:
+        lines.append(note)
+    if not ipower_notes:
+        lines.append(f"  └ Ly nạp đủ `{HOUSE_FUND:,.0f} VND`")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -799,6 +874,81 @@ async def cmd_naptaisan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi: {e}")
 
+
+CONTRIBUTION_PER_PERSON = 20_000_000  # Mỗi người đóng 20tr/tháng
+
+async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+
+    if context.args:
+        month_input = context.args[0].zfill(2)
+        year = now.strftime("%Y")
+        month_label = f"{month_input}-{year}"
+        now_label = f"{month_input}/{year}"
+    else:
+        month_label = get_month_label()
+        now_label = now.strftime("%m/%Y")
+
+    try:
+        ws = sh.worksheet(month_label)
+        records = ws.get_all_values()[1:]
+    except:
+        await update.message.reply_text("📭 Chưa có dữ liệu tháng này.")
+        return
+
+    # Tính chi tiêu từng người (không gồm tiền nhà)
+    person_totals = {}
+    house_total = 0
+    for row in records:
+        if not row or len(row) < 4:
+            continue
+        try:
+            amount = int(str(row[1]).replace(',', '').replace('.', '').replace('đ', '').strip())
+            desc = str(row[2]).lower().strip() if len(row) > 2 else ""
+            person = row[3].strip() if row[3] else "Khác"
+            if "tiền nhà" in desc or "tien nha" in desc:
+                house_total += amount
+            else:
+                person_totals[person] = person_totals.get(person, 0) + amount
+        except:
+            pass
+
+    lines = [f"💰 *Quyết toán tháng {now_label}*\n"]
+
+    transfer_to = None
+    transfer_amount = 0
+    ipower_notes = []
+
+    for person, spent in sorted(person_totals.items()):
+        remaining = CONTRIBUTION_PER_PERSON - spent
+        if remaining >= 0:
+            lines.append(f"👤 *{person}* chi `{spent:,.0f}` → còn `{remaining:,.0f} VND`")
+            if transfer_to is None:
+                transfer_to = person
+                transfer_amount = remaining
+        else:
+            overdue = abs(remaining)
+            ipower_this = HOUSE_FUND - overdue
+            lines.append(f"👤 *{person}* chi `{spent:,.0f}` → vượt `{overdue:,.0f} VND`")
+            ipower_notes.append(f"  └ iPower của {person}: `{HOUSE_FUND:,.0f} - {overdue:,.0f}` = `{ipower_this:,.0f} VND`")
+
+    lines.append("")
+
+    # Ai cần chuyển tiền cho ai
+    if transfer_to and transfer_amount > 0:
+        other = [p for p in person_totals if p != transfer_to]
+        if other:
+            lines.append(f"➡️ *{other[0]} chuyển cho {transfer_to}: `{transfer_amount:,.0f} VND`*")
+
+    lines.append("")
+    lines.append(f"🏠 *Nạp vào iPower: `{HOUSE_FUND:,.0f} VND`*")
+    for note in ipower_notes:
+        lines.append(note)
+    if not ipower_notes:
+        lines.append(f"  └ Ly nạp đủ `{HOUSE_FUND:,.0f} VND`")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
     try:
@@ -819,6 +969,7 @@ def main():
     app.add_handler(CommandHandler("compare", cmd_compare))
     app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("summary", cmd_summary))
+    app.add_handler(CommandHandler("quyettoan", cmd_quyettoan))
     app.add_handler(CommandHandler("taisan", cmd_taisan))
     app.add_handler(CommandHandler("naptaisan", cmd_naptaisan))
     app.add_handler(CommandHandler("reset", cmd_reset))

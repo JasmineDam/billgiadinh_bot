@@ -693,10 +693,11 @@ async def callback_nap_ipower(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if query.data.startswith("nap_ipower:"):
         amount = int(query.data.split(":")[1])
-        data = update_asset("iPower", 0)  # Get current
+        month_label = get_month_label()
+
+        # Lấy số dư iPower hiện tại
         ws = get_asset_sheet()
         records = ws.get_all_values()
-        month_label = get_month_label()
         current = 0
         for row in records[1:]:
             if row and len(row) >= 4 and row[0].lower() == "ipower" and row[3] == month_label:
@@ -704,8 +705,11 @@ async def callback_nap_ipower(update: Update, context: ContextTypes.DEFAULT_TYPE
                     current = int(str(row[1]).replace(',', '').strip())
                 except:
                     pass
+
+        # Cộng dồn vào số cũ
         new_amount = current + amount
         data = update_asset("iPower", new_amount)
+
         await query.edit_message_text(
             f"✅ *Đã nạp vào iPower!*\n"
             f"💰 Trước: `{current:,.0f} VND`\n"

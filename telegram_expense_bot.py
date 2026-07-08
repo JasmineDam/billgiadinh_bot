@@ -668,11 +668,14 @@ async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines.append("")
 
-    # Ai cần chuyển tiền cho ai
-    if transfer_to and transfer_amount > 0:
-        other = [p for p in person_totals if p != transfer_to]
-        if other:
-            lines.append(f"➡️ *{other[0]} chuyển cho {transfer_to}: `{transfer_amount:,.0f} VND`*")
+    # Tính ai chuyển cho ai
+    # Người chi ít hơn 20tr → cần bù cho người chi nhiều hơn
+    underpaid = {p: CONTRIBUTION_PER_PERSON - s for p, s in person_totals.items() if s < CONTRIBUTION_PER_PERSON}
+    overpaid = {p: s - CONTRIBUTION_PER_PERSON for p, s in person_totals.items() if s > CONTRIBUTION_PER_PERSON}
+
+    for payer, amt in underpaid.items():
+        for receiver, _ in overpaid.items():
+            lines.append(f"➡️ *{payer} chuyển cho {receiver}: `{amt:,.0f} VND`*")
 
     lines.append("")
     lines.append(f"🏠 *Nạp vào iPower: `{HOUSE_FUND:,.0f} VND`*")
@@ -981,11 +984,14 @@ async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines.append("")
 
-    # Ai cần chuyển tiền cho ai
-    if transfer_to and transfer_amount > 0:
-        other = [p for p in person_totals if p != transfer_to]
-        if other:
-            lines.append(f"➡️ *{other[0]} chuyển cho {transfer_to}: `{transfer_amount:,.0f} VND`*")
+    # Tính ai chuyển cho ai
+    # Người chi ít hơn 20tr → cần bù cho người chi nhiều hơn
+    underpaid = {p: CONTRIBUTION_PER_PERSON - s for p, s in person_totals.items() if s < CONTRIBUTION_PER_PERSON}
+    overpaid = {p: s - CONTRIBUTION_PER_PERSON for p, s in person_totals.items() if s > CONTRIBUTION_PER_PERSON}
+
+    for payer, amt in underpaid.items():
+        for receiver, _ in overpaid.items():
+            lines.append(f"➡️ *{payer} chuyển cho {receiver}: `{amt:,.0f} VND`*")
 
     lines.append("")
     lines.append(f"🏠 *Nạp vào iPower: `{HOUSE_FUND:,.0f} VND`*")

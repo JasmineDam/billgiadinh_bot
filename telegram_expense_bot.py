@@ -1000,38 +1000,23 @@ async def cmd_quyettoan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ipower_notes:
         lines.append(f"  └ Ly nạp đủ `{HOUSE_FUND:,.0f} VND`")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    # Tính số tiền nạp iPower
+    ipower_amount = HOUSE_FUND
+    for person, spent in person_totals.items():
+        if spent > CONTRIBUTION_PER_PERSON:
+            ipower_amount -= (spent - CONTRIBUTION_PER_PERSON)
 
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(f"✅ Nạp {ipower_amount:,.0f} vào iPower", callback_data=f"nap_ipower:{ipower_amount}"),
+        InlineKeyboardButton("❌ Bỏ qua", callback_data="skip_ipower")
+    ]])
 
-async def callback_nap_ipower(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    await update.message.reply_text(
+        "\n".join(lines),
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
 
-    if query.data.startswith("nap_ipower:"):
-        amount = int(query.data.split(":")[1])
-        data = update_asset("iPower", 0)  # Get current
-        ws = get_asset_sheet()
-        records = ws.get_all_values()
-        month_label = get_month_label()
-        current = 0
-        for row in records[1:]:
-            if row and len(row) >= 4 and row[0].lower() == "ipower" and row[3] == month_label:
-                try:
-                    current = int(str(row[1]).replace(',', '').strip())
-                except:
-                    pass
-        new_amount = current + amount
-        data = update_asset("iPower", new_amount)
-        await query.edit_message_text(
-            f"✅ *Đã nạp vào iPower!*\n"
-            f"💰 Trước: `{current:,.0f} VND`\n"
-            f"➕ Nạp: `{amount:,.0f} VND`\n"
-            f"💎 Sau: `{new_amount:,.0f} VND`\n\n"
-            f"🏦 *Tổng tài sản:* `{data['total']:,.0f} VND`",
-            parse_mode="Markdown",
-        )
-    elif query.data == "skip_ipower":
-        await query.edit_message_text("❌ Bỏ qua nạp iPower.")
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_label = get_month_label()
